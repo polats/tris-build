@@ -14,6 +14,10 @@ jobs:
 Inputs, all optional: `project-path` (directory holding `project.godot`), `preset` (export preset
 name) and `godot-version` (exact version such as `4.7.2`).
 
+The job needs `permissions: id-token: write`. After the build, `tris-upload.mjs` publishes it to
+Tris, authenticated by the job's own OIDC token; the repository has to be linked at
+https://creds.club first.
+
 ## By hand
 
 ```bash

@@ -73,9 +73,5 @@ jobs:
         if: failure()
         run: tail -n 200 "$RUNNER_TEMP"/tris/*.log || true
 
-      # Spike: the build is kept as an artifact. The upload to Tris storage replaces this step.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web
-          path: ${{ runner.temp }}/tris/web
-          retention-days: 3
+      - name: Publish
+        run: node .tris-build/tris-upload.mjs "$RUNNER_TEMP/tris/web"
