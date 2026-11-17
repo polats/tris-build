@@ -1,0 +1,72 @@
+# The Tris build, called from the small workflow Tris adds to a linked repository. All build
+# logic lives here and in tris-build.sh, so a fix reaches every linked repository without
+# touching it.
+name: tris build
+
+on:
+  workflow_call:
+    inputs:
+      project-path:
+        description: Directory holding project.godot. Found automatically when empty.
+        type: string
+        default: ""
+      preset:
+        description: Export preset name. The first Web preset when empty.
+        type: string
+        default: ""
+      godot-version:
+        description: Exact Godot version such as 4.7.2. Read from project.godot when empty.
+        type: string
+        default: ""
+      tris-repo:
+        description: Repository holding the build script.
+        type: string
+        default: polats/tris-build
+      tris-ref:
+        type: string
+        default: main
+
+permissions:
+  contents: read
+  id-token: write # the upload to Tris authenticates with the run's own OIDC token
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      # History is not needed and can be gigabytes.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: true
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tris-repo }}
+          ref: ${{ inputs.tris-ref }}
+          path: .tris-build
+
+      - name: Engine cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tris
+          key: tris-godot-${{ inputs.godot-version }}-${{ hashFiles('**/project.godot') }}
+
+      - name: Build
+        env:
+          TRIS_PROJECT_PATH: ${{ inputs.project-path }}
+          TRIS_PRESET: ${{ inputs.preset }}
+          TRIS_GODOT_VERSION: ${{ inputs.godot-version }}
+        run: .tris-build/tris-build.sh "$GITHUB_WORKSPACE" "$RUNNER_TEMP/tris/web"
+
+      - name: Logs
+        if: failure()
+        run: tail -n 200 "$RUNNER_TEMP"/tris/*.log || true
+
+      # Spike: the build is kept as an artifact. The upload to Tris storage replaces this step.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: ${{ runner.temp }}/tris/web
+          retention-days: 3
