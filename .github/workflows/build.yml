@@ -53,6 +53,15 @@ jobs:
           path: ~/.cache/tris
           key: tris-godot-${{ inputs.godot-version }}-${{ hashFiles('**/project.godot') }}
 
+      # Importing is most of a cold build. Godot skips files whose content has not changed, so
+      # the previous run's import folder is restored and saved again under the new commit.
+      - name: Import cache
+        uses: actions/cache@v4
+        with:
+          path: "**/.godot"
+          key: tris-import-${{ github.sha }}
+          restore-keys: tris-import-
+
       - name: Build
         env:
           TRIS_PROJECT_PATH: ${{ inputs.project-path }}
