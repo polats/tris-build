@@ -45,3 +45,18 @@ in `~/.cache/tris`.
 
 Godot 4.3 and later, GDScript. C# projects have no web export in Godot 4. Godot 4.0–4.2 need
 hosting headers for every web build and are refused.
+
+## The agent box
+
+`box/` is the image behind a game's agent chat on Tris: the [Paseo](https://github.com/getpaseo/paseo)
+daemon, Codex, Claude Code and OpenCode, headless Godot, and a small server that lets the game's
+owner in. It is published as `ghcr.io/polats/tris-box` by `.github/workflows/box.yml`.
+
+A game repository uses it through `.devcontainer/devcontainer.json` (`box/devcontainer.json` is the
+file Tris adds), and Tris runs it as a GitHub Codespace on that repository, in the owner's account.
+
+- `tris-box-start` runs at every start: restores a saved Codex sign-in, installs the Godot version
+  the project asks for when the image's differs, starts the daemon and the pair server, and makes
+  their two ports public.
+- `tris-pair-server.mjs` gives the daemon's password to a caller whose GitHub token belongs to the
+  Codespace's owner. The daemon accepts browser connections from creds.club only.

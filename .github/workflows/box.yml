@@ -1,0 +1,33 @@
+# Builds the Tris agent box and publishes it to ghcr.io/polats/tris-box. A game repository's
+# .devcontainer/devcontainer.json names that image, so a new box starts without building anything.
+name: box image
+
+on:
+  push:
+    branches: [main]
+    paths: ["box/**", ".github/workflows/box.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: box
+          push: true
+          # `1` is what game repositories name: fixes reach a box the next time it is created.
+          tags: |
+            ghcr.io/polats/tris-box:1
+            ghcr.io/polats/tris-box:latest
+            ghcr.io/polats/tris-box:${{ github.sha }}

@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Start the box: the Paseo daemon (the agents' engine) and the pair server (its front door).
+# Runs on every start of the container; safe to run again.
+set -euo pipefail
+
+export HOME=${HOME:-/home/paseo}
+export PASEO_HOME=${PASEO_HOME:-$HOME/.paseo}
+mkdir -p "$PASEO_HOME"
+
+# The daemon's password never leaves the box except through the pair server.
+secret="$PASEO_HOME/tris-box-password"
+if [ ! -s "$secret" ]; then
+  (umask 077 && head -c 32 /dev/urandom | base64 | tr -d '/+=\n' >"$secret")
+fi
+PASEO_PASSWORD=$(cat "$secret")
+export PASEO_PASSWORD
+
+# A Codex sign-in saved from the dashboard arrives as a Codespaces secret: base64 of auth.json.
+# Codex refreshes its own file and a refreshed file must win over the saved copy, so the saved
+# one is written only when this box has none, or when the saved sign-in has changed since this
+# box last took it (the user signed in again).
+codex_home=${CODEX_HOME:-$HOME/.codex}
+if [ -n "${TRIS_CODEX_AUTH:-}" ]; then
+  seen="$PASEO_HOME/tris-codex-restored"
+  now=$(printf '%s' "$TRIS_CODEX_AUTH" | sha256sum | cut -c1-16)
+  if [ ! -s "$codex_home/auth.json" ] || [ "$(cat "$seen" 2>/dev/null)" != "$now" ]; then
+    if printf '%s' "$TRIS_CODEX_AUTH" | base64 -d 2>/dev/null | jq -e '.tokens.refresh_token' >/dev/null 2>&1; then
+      mkdir -p "$codex_home"
+      (umask 077 && printf '%s' "$TRIS_CODEX_AUTH" | base64 -d >"$codex_home/auth.json.tmp")
+      mv -f "$codex_home/auth.json.tmp" "$codex_home/auth.json"
+      printf '%s' "$now" >"$seen"
+      echo "tris-box: Codex sign-in restored from your GitHub account"
+    else
+      echo "tris-box: TRIS_CODEX_AUTH is not a Codex sign-in; ignored"
+    fi
+  fi
+fi
+
+# Godot. The image carries one version. A project made with another minor version gets its own
+# editor, so that an agent's import check never upgrades the project's files. Kept in the home
+# directory, which survives stops and starts.
+export PATH="$HOME/.local/bin:$PATH"
+project=$(find "$PWD" -name project.godot -not -path '*/.git/*' -printf '%d %p\n' 2>/dev/null | sort -n | head -1 | cut -d' ' -f2-)
+want=$(grep -m1 '^config/features=' "${project:-/dev/null}" 2>/dev/null | grep -oE '"[0-9]+\.[0-9]+"' | head -1 | tr -d '"')
+have=$(godot --version 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
+if [ -n "$want" ] && [ "$want" != "$have" ]; then
+  builds=https://github.com/godotengine/godot-builds
+  version=$(git ls-remote --tags "$builds" "refs/tags/$want-stable" "refs/tags/$want.*-stable" 2>/dev/null |
+    sed -E 's|.*refs/tags/(.*)-stable$|\1|' | sort -V | tail -1)
+  if [ -n "$version" ]; then
+    echo "tris-box: installing Godot $version for this project"
+    tmp=$(mktemp -d)
+    if curl -fsSL --retry 2 -o "$tmp/godot.zip" "$builds/releases/download/$version-stable/Godot_v$version-stable_linux.x86_64.zip" &&
+      unzip -q "$tmp/godot.zip" -d "$tmp"; then
+      mkdir -p "$HOME/.local/bin"
+      mv "$tmp/Godot_v$version-stable_linux.x86_64" "$HOME/.local/bin/godot"
+      chmod +x "$HOME/.local/bin/godot"
+    else
+      echo "tris-box: could not install Godot $version; using $have"
+    fi
+    rm -rf "$tmp"
+  fi
+fi
+
+export TRIS_ORIGINS=${TRIS_ORIGINS:-https://creds.club,https://tris.creds.club}
+export TRIS_WORKSPACE=${TRIS_WORKSPACE:-$PWD}
+export PASEO_LISTEN=0.0.0.0:6767
+# The dashboard is the only page allowed to open a connection, and the box is reached by its
+# forwarded hostname.
+export PASEO_CORS_ORIGINS=$TRIS_ORIGINS
+export PASEO_HOSTNAMES=${PASEO_HOSTNAMES:-.app.github.dev,localhost}
+# Nobody talks to the box; do not download speech models.
+export PASEO_DICTATION_ENABLED=false
+export PASEO_VOICE_MODE_ENABLED=false
+export PASEO_WEB_UI_ENABLED=false
+
+# Each runs in its own session. A dev container kills everything left in the start command's
+# process group when that command returns, and plain nohup does not leave the group.
+if ! pgrep -f supervisor-entrypoint >/dev/null; then
+  setsid nohup /usr/local/bin/paseo-docker-entrypoint >"$PASEO_HOME/tris-daemon.log" 2>&1 </dev/null &
+fi
+if ! pgrep -f tris-pair-server >/dev/null; then
+  setsid nohup node /usr/local/lib/tris/tris-pair-server.mjs >"$PASEO_HOME/tris-pair.log" 2>&1 </dev/null &
+fi
+
+# A Codespace's forwarded ports answer only to the owner's github.dev session. The dashboard is a
+# different site, so both ports are made public; the daemon keeps its password and the pair
+# server its GitHub check.
+if [ -n "${CODESPACE_NAME:-}" ]; then
+  for _ in $(seq 1 20); do
+    if gh codespace ports visibility 6767:public 6768:public -c "$CODESPACE_NAME" >/dev/null 2>&1; then
+      echo "tris-box: ports are public"
+      break
+    fi
+    sleep 3
+  done
+fi
+echo "tris-box: started"
