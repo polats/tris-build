@@ -62,6 +62,25 @@ if [ -n "$want" ] && [ "$want" != "$have" ]; then
   fi
 fi
 
+
+# Register tris-mcp (visual Godot screenshots via `tris_godot_shot`) for Codex and Claude Code
+# without overwriting existing user config.
+mkdir -p "$codex_home"
+if ! grep -q "^\[mcp_servers\.tris\]" "$codex_home/config.toml" 2>/dev/null; then
+  printf "\n[mcp_servers.tris]\ncommand = \"/usr/local/bin/tris-mcp\"\n" >>"$codex_home/config.toml"
+fi
+claude_cfg="$HOME/.claude.json"
+if [ ! -s "$claude_cfg" ]; then
+  printf "{\"mcpServers\":{\"tris\":{\"type\":\"stdio\",\"command\":\"/usr/local/bin/tris-mcp\"}}}\n" >"$claude_cfg"
+elif ! jq -e ".mcpServers.tris" "$claude_cfg" >/dev/null 2>&1; then
+  tmp_cfg=$(mktemp)
+  if jq ".mcpServers = ((.mcpServers // {}) + {\"tris\":{\"type\":\"stdio\",\"command\":\"/usr/local/bin/tris-mcp\"}})" "$claude_cfg" >"$tmp_cfg"; then
+    mv -f "$tmp_cfg" "$claude_cfg"
+  else
+    rm -f "$tmp_cfg"
+  fi
+fi
+
 export TRIS_ORIGINS=${TRIS_ORIGINS:-https://creds.club,https://tris.creds.club}
 export TRIS_WORKSPACE=${TRIS_WORKSPACE:-$PWD}
 export PASEO_LISTEN=0.0.0.0:6767

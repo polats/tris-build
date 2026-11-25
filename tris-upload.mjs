@@ -79,6 +79,14 @@ try {
   } catch {
     // A build made without tris-build.sh has no manifest; the files are enough.
   }
+  if (!build.defaultBranch && process.env.GITHUB_EVENT_PATH) {
+    try {
+      const ev = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, "utf8"));
+      if (typeof ev?.repository?.default_branch === "string") build.defaultBranch = ev.repository.default_branch;
+    } catch {
+      // Ignore unreadable event payload.
+    }
+  }
 
   // Compress first: the sizes Tris is told are the sizes it will store and check.
   const files = [];
