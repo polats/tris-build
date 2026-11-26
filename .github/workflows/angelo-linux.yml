@@ -43,6 +43,7 @@ jobs:
         working-directory: angelo
         run: |
           git lfs install --local --skip-repo
+          git lfs pull --include='assets/**,release/datafiles/**,scripts/startup/bl_app_templates_system/**' --exclude='release/datafiles/splash.png'
           git -c submodule.lib/linux_x64.update=checkout submodule update --init --depth 1 lib/linux_x64
           git -C lib/linux_x64 lfs install --local --skip-repo
           git -C lib/linux_x64 lfs pull
