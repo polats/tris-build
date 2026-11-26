@@ -39,10 +39,25 @@ RUN curl -fsSL -o /tmp/godot.zip \
   && chmod +x /usr/local/bin/godot \
   && rm /tmp/godot.zip
 
+
+# Optional: bundle headless Linux x86_64 Angelo for tris_angelo_* MCP tools and 3D Studio.
+# Pass --build-arg ANGELO_LINUX_URL=https://.../Angelo-<ver>-linux-x64.tar.xz when building.
+ARG ANGELO_LINUX_URL=""
+RUN if [ -n "$ANGELO_LINUX_URL" ]; then \
+      mkdir -p /opt/angelo && \
+      curl -fsSL "$ANGELO_LINUX_URL" -o /tmp/angelo.tar.xz && \
+      tar -xf /tmp/angelo.tar.xz --strip-components=1 -C /opt/angelo && \
+      rm -f /tmp/angelo.tar.xz && \
+      ln -sf /opt/angelo/angelo /usr/local/bin/angelo; \
+    fi
+
 COPY tris-box-start /usr/local/bin/tris-box-start
 COPY tris-pair-server.mjs /usr/local/lib/tris/tris-pair-server.mjs
 COPY tris-shot.mjs /usr/local/bin/tris-shot
 COPY tris-shot-harness.gd /usr/local/lib/tris/tris-shot-harness.gd
+COPY tris-angelo.mjs /usr/local/bin/tris-angelo.mjs
+COPY tris-angelo.mjs /usr/local/lib/tris/tris-angelo.mjs
+COPY tris-angelo-worker.py /usr/local/lib/tris/tris-angelo-worker.py
 COPY tris-mcp.mjs /usr/local/bin/tris-mcp
 COPY tris-night.mjs /usr/local/bin/tris-night
 RUN chmod +x /usr/local/bin/tris-box-start /usr/local/bin/tris-shot /usr/local/bin/tris-mcp /usr/local/bin/tris-night

@@ -7,6 +7,11 @@ on:
     branches: [main]
     paths: ["box/**", ".github/workflows/box.yml"]
   workflow_dispatch:
+    inputs:
+      angelo_linux_url:
+        description: "Optional URL to Angelo-*-linux-x64.tar.xz (overrides vars.ANGELO_LINUX_URL)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -26,6 +31,8 @@ jobs:
         with:
           context: box
           push: true
+          build-args: |
+            ANGELO_LINUX_URL=${{ inputs.angelo_linux_url || vars.ANGELO_LINUX_URL || '' }}
           # `1` is what game repositories name: fixes reach a box the next time it is created.
           tags: |
             ghcr.io/polats/tris-box:1
