@@ -105,11 +105,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$TAG" "dist/${TARBALL}" \
-            --repo "${{ github.repository }}" \
-            --title "Angelo ${TAG} (Headless Linux x86_64)" \
-            --notes "Headless CPU-only Linux x86_64 build of Angelo for ghcr.io/polats/tris-box." \
-            --clobber || \
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Angelo ${TAG} (Headless Linux x86_64)" \
+              --notes "Headless CPU-only Linux x86_64 build of Angelo for ghcr.io/polats/tris-box."
+          fi
           gh release upload "$TAG" "dist/${TARBALL}" --repo "${{ github.repository }}" --clobber
           URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${TARBALL}"
           echo "RELEASE_URL=${URL}" >> "$GITHUB_ENV"
