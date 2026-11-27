@@ -104,7 +104,7 @@ const server = createServer(async (request, response) => {
   if (origin && origins.has(origin)) {
     response.setHeader("access-control-allow-origin", origin);
     response.setHeader("access-control-allow-headers", "authorization, content-type, accept");
-    response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+    response.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
     response.setHeader("vary", "origin");
   }
   const send = (status, body) => {
@@ -163,6 +163,76 @@ const server = createServer(async (request, response) => {
   if (!authed) {
     await new Promise((done) => setTimeout(done, 1000));
     return send(403, { error: "this box belongs to someone else" });
+  }
+
+
+  const codexAuthFile = path.join(process.env.CODEX_HOME || path.join(process.env.HOME || "/root", ".codex"), "auth.json");
+
+  if (pathname === "/api/codex/auth") {
+    if (request.method === "GET") {
+      try {
+        if (!fs.existsSync(codexAuthFile)) return send(200, { signedIn: false });
+        const raw = fs.readFileSync(codexAuthFile, "utf8");
+        const parsed = JSON.parse(raw);
+        if (!parsed?.tokens?.refresh_token) return send(200, { signedIn: false });
+        return send(200, { signedIn: true, authB64: Buffer.from(raw, "utf8").toString("base64") });
+      } catch {
+        return send(200, { signedIn: false });
+      }
+    }
+    if (request.method === "POST") {
+      try {
+        const body = await readJson(request);
+        const raw = Buffer.from(String(body.authB64 || ""), "base64").toString("utf8");
+        const parsed = JSON.parse(raw);
+        if (!parsed?.tokens?.refresh_token) return send(400, { ok: false, error: "Invalid Codex auth payload" });
+        fs.mkdirSync(path.dirname(codexAuthFile), { recursive: true, mode: 0o700 });
+        const tmp = codexAuthFile + ".tmp";
+        fs.writeFileSync(tmp, raw, { mode: 0o600 });
+        fs.renameSync(tmp, codexAuthFile);
+        return send(200, { ok: true });
+      } catch (err) {
+        return send(400, { ok: false, error: err.message });
+      }
+    }
+    if (request.method === "DELETE") {
+      try { fs.rmSync(codexAuthFile, { force: true }); } catch {}
+      return send(200, { ok: true });
+    }
+  }
+
+  if (request.method === "POST" && pathname === "/api/codex/device-login") {
+    response.setHeader("content-type", "text/event-stream");
+    response.setHeader("cache-control", "no-cache");
+    response.setHeader("connection", "keep-alive");
+    const sendSse = (ev, data) => response.write(`event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`);
+    const child = spawn("codex", ["login", "--device-auth"], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    let combined = "";
+    let sentCode = false;
+    const scan = (chunk) => {
+      combined += chunk.toString().replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+      if (!sentCode) {
+        const urlM = combined.match(/https:\/\/[^\s]+/);
+        const codeM = combined.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4,5})\b/);
+        if (urlM && codeM) {
+          sentCode = true;
+          sendSse("code", { url: urlM[0], code: codeM[1] });
+        }
+      }
+    };
+    child.stdout.on("data", scan);
+    child.stderr.on("data", scan);
+    request.on("close", () => { try { child.kill(); } catch {} });
+    child.on("close", (c) => {
+      if (c === 0 && fs.existsSync(codexAuthFile)) {
+        const raw = fs.readFileSync(codexAuthFile, "utf8");
+        sendSse("done", { ok: true, authB64: Buffer.from(raw, "utf8").toString("base64") });
+      } else {
+        sendSse("error", { ok: false, error: `codex login exited (${c})` });
+      }
+      response.end();
+    });
+    return;
   }
 
   if (request.method === "POST" && pathname === "/pair") {
