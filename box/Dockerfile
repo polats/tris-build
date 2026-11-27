@@ -13,7 +13,7 @@ USER root
 # to capture real rendered frames from Godot on CPU-only Codespaces.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       unzip jq libfontconfig1 \
+       unzip xz-utils jq libfontconfig1 \
        xvfb xauth \
        libgl1 libglx-mesa0 libegl1 libegl-mesa0 \
        libvulkan1 mesa-vulkan-drivers \
